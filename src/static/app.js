@@ -3,6 +3,41 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const loginButton = document.getElementById("login-button");
+  const adminStatus = document.getElementById("admin-status");
+  const loginDialog = document.getElementById("login-dialog");
+  const loginForm = document.getElementById("login-form");
+  const cancelLogin = document.getElementById("cancel-login");
+  const loginError = document.getElementById("login-error");
+  let authHeader = sessionStorage.getItem("teacherAuth");
+
+  function authHeaders() {
+    return authHeader ? { Authorization: authHeader } : {};
+  }
+
+  function updateAdminView(isTeacher) {
+    document.getElementById("signup-container").classList.toggle("hidden", !isTeacher);
+    adminStatus.classList.toggle("hidden", !isTeacher);
+    loginButton.textContent = isTeacher ? "Log out" : "Teacher login";
+    document.querySelectorAll(".delete-btn").forEach((button) => {
+      button.classList.toggle("hidden", !isTeacher);
+    });
+  }
+
+  async function checkTeacherSession() {
+    if (!authHeader) {
+      updateAdminView(false);
+      return;
+    }
+    const response = await fetch("/auth/me", { headers: authHeaders() });
+    if (response.ok) {
+      updateAdminView(true);
+    } else {
+      sessionStorage.removeItem("teacherAuth");
+      authHeader = null;
+      updateAdminView(false);
+    }
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -80,6 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: authHeaders(),
         }
       );
 
@@ -124,6 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: authHeaders(),
         }
       );
 
@@ -155,6 +192,41 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  loginButton.addEventListener("click", () => {
+    if (authHeader) {
+      sessionStorage.removeItem("teacherAuth");
+      authHeader = null;
+      updateAdminView(false);
+      fetchActivities();
+      return;
+    }
+    loginError.classList.add("hidden");
+    loginForm.reset();
+    loginDialog.showModal();
+  });
+
+  cancelLogin.addEventListener("click", () => loginDialog.close());
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+    authHeader = `Basic ${btoa(`${username}:${password}`)}`;
+    const response = await fetch("/auth/me", { headers: authHeaders() });
+    if (!response.ok) {
+      authHeader = null;
+      loginError.textContent = "Invalid teacher credentials.";
+      loginError.classList.remove("hidden");
+      return;
+    }
+    sessionStorage.setItem("teacherAuth", authHeader);
+    loginDialog.close();
+    updateAdminView(true);
+    fetchActivities();
+  });
+
   // Initialize app
+  updateAdminView(false);
+  checkTeacherSession();
   fetchActivities();
 });
